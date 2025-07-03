@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "998985176643",
+    "project_id": "uber-eccbf",
+    "storage_bucket": "uber-eccbf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:998985176643:android:5342ddcab2c8d2de7766f6",
+        "android_client_info": {
+          "package_name": "com.example.uber"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBs1AgYvveBB79LJr7KiGoXKL9G6-R7Jy4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
