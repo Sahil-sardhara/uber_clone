@@ -4,7 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
-import 'package:uber/global/global_var.dart';
+import 'package:uber/models/place_suggestion.dart';
 
 class MapSearchScreen extends StatefulWidget {
   const MapSearchScreen({super.key});
@@ -13,21 +13,21 @@ class MapSearchScreen extends StatefulWidget {
   State<MapSearchScreen> createState() => _MapSearchScreenState();
 }
 
-class _MapSearchScreenState extends State<MapSearchScreen>
-    with SingleTickerProviderStateMixin {
+class _MapSearchScreenState extends State<MapSearchScreen> {
   GoogleMapController? _mapController;
   String _mapStyle = '';
   final pickupController = TextEditingController();
   final destinationController = TextEditingController();
 
-  List<dynamic> _suggestions = [];
+  List<PlaceSuggestion> _suggestions = [];
   bool isExpanded = false;
+  bool isPickupActive = true;
 
   double bottomSheetHeightFraction = 0.3;
   final double minHeight = 0.25;
   final double maxHeight = 0.6;
 
-  final String _apiKey = placeapikey;
+  final String _apiKey = "AlzaSyAjKvMppyRsPvWPvRlj_KKZRKoYAtp9QnI";
 
   final List<Map<String, String>> recentLocations = [
     {"main": "Home", "sub": "Shivranjani, Ahmedabad"},
@@ -52,10 +52,8 @@ class _MapSearchScreenState extends State<MapSearchScreen>
       return;
     }
 
-    setState(() => isExpanded = true);
-
     final String url =
-        'https://maps.googleapis.com/maps/api/place/autocomplete/json'
+        'https://maps.gomaps.pro/maps/api/place/autocomplete/json'
         '?input=${Uri.encodeComponent(input)}'
         '&key=$_apiKey'
         '&components=country:in';
@@ -65,11 +63,17 @@ class _MapSearchScreenState extends State<MapSearchScreen>
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
+          List<PlaceSuggestion> suggestions =
+              (data['predictions'] as List)
+                  .map((item) => PlaceSuggestion.fromGoMap(item))
+                  .toList();
           setState(() {
-            _suggestions = data['predictions'];
+            _suggestions = suggestions;
+            isExpanded = true;
+            bottomSheetHeightFraction = maxHeight;
           });
         } else {
-          print("Google API error: ${data['error_message']}");
+          print("GoMap API error: ${data['error_message'] ?? data['status']}");
         }
       } else {
         print("HTTP error: ${response.statusCode}");
@@ -156,7 +160,6 @@ class _MapSearchScreenState extends State<MapSearchScreen>
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
           ),
-
           Positioned(
             top: 50,
             left: 16,
@@ -188,8 +191,6 @@ class _MapSearchScreenState extends State<MapSearchScreen>
               ],
             ),
           ),
-
-          // Custom animated bottom sheet
           Positioned(
             bottom: 0,
             left: 0,
@@ -203,7 +204,6 @@ class _MapSearchScreenState extends State<MapSearchScreen>
               ),
               child: Column(
                 children: [
-                  // Drag handle
                   GestureDetector(
                     onVerticalDragUpdate: (details) {
                       setState(() {
@@ -262,55 +262,47 @@ class _MapSearchScreenState extends State<MapSearchScreen>
                           ),
                           const SizedBox(height: 12),
                           if (!isExpanded)
-                            Column(
-                              children:
-                                  recentLocations
-                                      .map(
-                                        (loc) => ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: const Icon(
-                                            Icons.history,
-                                            color: Colors.white70,
-                                          ),
-                                          title: Text(
-                                            loc["main"]!,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          subtitle: Text(
-                                            loc["sub"]!,
-                                            style: const TextStyle(
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                          onTap: () {
-                                            pickupController.text = loc["sub"]!;
-                                            setState(() => isExpanded = true);
-                                          },
-                                        ),
-                                      )
-                                      .toList(),
+                            ...recentLocations.map(
+                              (loc) => ListTile(
+                                leading: const Icon(
+                                  Icons.history,
+                                  color: Colors.white70,
+                                ),
+                                title: Text(
+                                  loc["main"]!,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                subtitle: Text(
+                                  loc["sub"]!,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                                onTap: () {
+                                  pickupController.text = loc["sub"]!;
+                                  setState(() => isExpanded = true);
+                                },
+                              ),
                             ),
-                          if (isExpanded && _suggestions.isNotEmpty)
+                          if (_suggestions.isNotEmpty)
                             ..._suggestions.map(
                               (s) => ListTile(
-                                contentPadding: EdgeInsets.zero,
                                 leading: const Icon(
                                   Icons.location_on_outlined,
                                   color: Colors.white70,
                                 ),
                                 title: Text(
-                                  s['structured_formatting']['main_text'],
+                                  s.mainText,
                                   style: const TextStyle(color: Colors.white),
                                 ),
                                 subtitle: Text(
-                                  s['structured_formatting']['secondary_text'] ??
-                                      '',
+                                  s.secondaryText,
                                   style: const TextStyle(color: Colors.grey),
                                 ),
                                 onTap: () {
-                                  pickupController.text = s['description'];
+                                  if (isPickupActive) {
+                                    pickupController.text = s.description;
+                                  } else {
+                                    destinationController.text = s.description;
+                                  }
                                   _collapseBottom();
                                 },
                               ),
@@ -321,6 +313,14 @@ class _MapSearchScreenState extends State<MapSearchScreen>
                   ),
                 ],
               ),
+            ),
+          ),
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: Text(
+              "Powered by GoMap Pro",
+              style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ),
         ],
@@ -336,7 +336,12 @@ class _MapSearchScreenState extends State<MapSearchScreen>
         Expanded(
           child: TextField(
             controller: pickupController,
-            onTap: () => setState(() => isExpanded = true),
+            onTap:
+                () => setState(() {
+                  isExpanded = true;
+                  isPickupActive = true;
+                  bottomSheetHeightFraction = maxHeight;
+                }),
             onChanged: _getPlaceSuggestions,
             style: const TextStyle(color: Colors.white),
             decoration: const InputDecoration(
@@ -358,7 +363,13 @@ class _MapSearchScreenState extends State<MapSearchScreen>
         Expanded(
           child: TextField(
             controller: destinationController,
-            onTap: () => setState(() => isExpanded = true),
+            onTap:
+                () => setState(() {
+                  isExpanded = true;
+                  isPickupActive = false;
+                  bottomSheetHeightFraction = maxHeight;
+                }),
+            onChanged: _getPlaceSuggestions,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: hint,
