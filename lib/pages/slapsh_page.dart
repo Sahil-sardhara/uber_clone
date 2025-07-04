@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:uber/auth/login_screen.dart';
+import 'package:uber/auth/signup_screen.dart';
 import 'package:uber/global/global_var.dart';
 import 'package:uber/pages/home_page.dart';
 

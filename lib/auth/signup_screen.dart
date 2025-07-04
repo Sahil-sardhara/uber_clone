@@ -202,11 +202,24 @@ class _SingupScreenState extends State<SingupScreen> {
                           ),
                         );
                       },
-                      child: Text(
-                        "Already have an Account? Login here",
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500,
+                      child: RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: "Already have an Account?",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            TextSpan(
+                              text: "Login here",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
