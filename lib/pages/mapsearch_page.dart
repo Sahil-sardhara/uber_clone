@@ -4,7 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
-import 'package:uber/global/global_var.dart'; // Make sure placeapikey is defined here
+import 'package:uber/global/global_var.dart';
 
 class MapSearchScreen extends StatefulWidget {
   const MapSearchScreen({super.key});
@@ -13,7 +13,8 @@ class MapSearchScreen extends StatefulWidget {
   State<MapSearchScreen> createState() => _MapSearchScreenState();
 }
 
-class _MapSearchScreenState extends State<MapSearchScreen> {
+class _MapSearchScreenState extends State<MapSearchScreen>
+    with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
   String _mapStyle = '';
   final pickupController = TextEditingController();
@@ -21,6 +22,10 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
 
   List<dynamic> _suggestions = [];
   bool isExpanded = false;
+
+  double bottomSheetHeightFraction = 0.3;
+  final double minHeight = 0.25;
+  final double maxHeight = 0.6;
 
   final String _apiKey = placeapikey;
 
@@ -79,6 +84,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
     setState(() {
       isExpanded = false;
       _suggestions.clear();
+      bottomSheetHeightFraction = 0.3;
     });
   }
 
@@ -120,10 +126,12 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
 
   Future<bool> _handlePermission() async {
     LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
     }
-    return permission == LocationPermission.always || permission == LocationPermission.whileInUse;
+    return permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
   }
 
   @override
@@ -144,21 +152,12 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                 _mapController?.setMapStyle(_mapStyle);
               }
             },
+            onTap: (_) => _collapseBottom(),
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
           ),
 
-          // Tap layer to collapse
-          if (isExpanded)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: _collapseBottom,
-              ),
-            ),
-
-          // Top Bar
           Positioned(
             top: 50,
             left: 16,
@@ -191,99 +190,128 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
             ),
           ),
 
-          // Bottom Card
+          // Custom animated bottom sheet
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              height: isExpanded ? screenHeight * 0.3 : 220,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              duration: const Duration(milliseconds: 200),
+              height: screenHeight * bottomSheetHeightFraction,
               decoration: const BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        "Plan your trip",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
+              child: Column(
+                children: [
+                  // Drag handle
+                  GestureDetector(
+                    onVerticalDragUpdate: (details) {
+                      setState(() {
+                        bottomSheetHeightFraction -=
+                            details.primaryDelta! / screenHeight;
+                        bottomSheetHeightFraction = bottomSheetHeightFraction
+                            .clamp(minHeight, maxHeight);
+                      });
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 6,
+                      margin: const EdgeInsets.only(top: 12, bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    const SizedBox(height: 12),
-
-                    // Input Fields
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade900,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
                       child: Column(
                         children: [
-                          _pickupField(),
-                          const Divider(color: Colors.grey),
-                          _locationField("Where to?", Icons.square_outlined),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              "Plan your trip",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade900,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                _pickupField(),
+                                const Divider(color: Colors.grey),
+                                _locationField("Where to?", Icons.square_outlined),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (!isExpanded)
+                            Column(
+                              children: recentLocations
+                                  .map(
+                                    (loc) => ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const Icon(Icons.history,
+                                          color: Colors.white70),
+                                      title: Text(
+                                        loc["main"]!,
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                      subtitle: Text(
+                                        loc["sub"]!,
+                                        style: const TextStyle(
+                                            color: Colors.grey),
+                                      ),
+                                      onTap: () {
+                                        pickupController.text = loc["sub"]!;
+                                        setState(() => isExpanded = true);
+                                      },
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          if (isExpanded && _suggestions.isNotEmpty)
+                            ..._suggestions.map(
+                              (s) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.location_on_outlined,
+                                    color: Colors.white70),
+                                title: Text(
+                                  s['structured_formatting']['main_text'],
+                                  style:
+                                      const TextStyle(color: Colors.white),
+                                ),
+                                subtitle: Text(
+                                  s['structured_formatting']
+                                          ['secondary_text'] ??
+                                      '',
+                                  style:
+                                      const TextStyle(color: Colors.grey),
+                                ),
+                                onTap: () {
+                                  pickupController.text = s['description'];
+                                  _collapseBottom();
+                                },
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-
-                    if (!isExpanded)
-                      Column(
-                        children: recentLocations
-                            .map(
-                              (loc) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.history, color: Colors.white70),
-                                title: Text(
-                                  loc["main"]!,
-                                  style: const TextStyle(color: Colors.white),
-                                ),
-                                subtitle: Text(
-                                  loc["sub"]!,
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                                onTap: () {
-                                  pickupController.text = loc["sub"]!;
-                                  setState(() => isExpanded = true);
-                                },
-                              ),
-                            )
-                            .toList(),
-                      ),
-
-                    if (isExpanded && _suggestions.isNotEmpty)
-                      ..._suggestions.map(
-                        (s) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.location_on_outlined,
-                              color: Colors.white70),
-                          title: Text(
-                            s['structured_formatting']['main_text'],
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          subtitle: Text(
-                            s['structured_formatting']['secondary_text'] ?? '',
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                          onTap: () {
-                            pickupController.text = s['description'];
-                            _collapseBottom();
-                          },
-                        ),
-                      ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
