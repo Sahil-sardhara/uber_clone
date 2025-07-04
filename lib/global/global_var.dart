@@ -6,3 +6,4 @@ String googleMapKey = "AIzaSyBs1AgYvveBB79LJr7KiGoXKL9G6-R7Jy4";
   target: LatLng(23.0225, 72.5714), // Example: Ahmedabad
   zoom: 14.0,
 );
+String placeapikey = "AIzaSyA3pSlENnfjLELAjB6zvxWi3Jn2l8YJsv0";
