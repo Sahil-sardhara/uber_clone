@@ -94,29 +94,28 @@ class _MapSearchScreenState extends State<MapSearchScreen>
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Share Location"),
-        content: const Text("Do you want to share your current location?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text("Share Location"),
+            content: const Text("Do you want to share your current location?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  Position pos = await Geolocator.getCurrentPosition();
+                  LatLng latLng = LatLng(pos.latitude, pos.longitude);
+                  _mapController?.animateCamera(CameraUpdate.newLatLng(latLng));
+                  pickupController.text = "Current Location";
+                  setState(() {});
+                },
+                child: const Text("OK"),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              Position pos = await Geolocator.getCurrentPosition();
-              LatLng latLng = LatLng(pos.latitude, pos.longitude);
-              _mapController?.animateCamera(
-                CameraUpdate.newLatLng(latLng),
-              );
-              pickupController.text = "Current Location";
-              setState(() {});
-            },
-            child: const Text("OK"),
-          ),
-        ],
-      ),
     );
   }
 
@@ -179,7 +178,7 @@ class _MapSearchScreenState extends State<MapSearchScreen>
                 ElevatedButton.icon(
                   onPressed: _shareLocation,
                   icon: const Icon(Icons.navigation, color: Colors.white),
-                  label: const Text("Share Location"),
+                  label: const Text("Share Current Location"),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
@@ -227,7 +226,9 @@ class _MapSearchScreenState extends State<MapSearchScreen>
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 8),
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
                       child: Column(
                         children: [
                           const Align(
@@ -252,54 +253,61 @@ class _MapSearchScreenState extends State<MapSearchScreen>
                               children: [
                                 _pickupField(),
                                 const Divider(color: Colors.grey),
-                                _locationField("Where to?", Icons.square_outlined),
+                                _locationField(
+                                  "Where to?",
+                                  Icons.square_outlined,
+                                ),
                               ],
                             ),
                           ),
                           const SizedBox(height: 12),
                           if (!isExpanded)
                             Column(
-                              children: recentLocations
-                                  .map(
-                                    (loc) => ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: const Icon(Icons.history,
-                                          color: Colors.white70),
-                                      title: Text(
-                                        loc["main"]!,
-                                        style: const TextStyle(
-                                            color: Colors.white),
-                                      ),
-                                      subtitle: Text(
-                                        loc["sub"]!,
-                                        style: const TextStyle(
-                                            color: Colors.grey),
-                                      ),
-                                      onTap: () {
-                                        pickupController.text = loc["sub"]!;
-                                        setState(() => isExpanded = true);
-                                      },
-                                    ),
-                                  )
-                                  .toList(),
+                              children:
+                                  recentLocations
+                                      .map(
+                                        (loc) => ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: const Icon(
+                                            Icons.history,
+                                            color: Colors.white70,
+                                          ),
+                                          title: Text(
+                                            loc["main"]!,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                            loc["sub"]!,
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                          onTap: () {
+                                            pickupController.text = loc["sub"]!;
+                                            setState(() => isExpanded = true);
+                                          },
+                                        ),
+                                      )
+                                      .toList(),
                             ),
                           if (isExpanded && _suggestions.isNotEmpty)
                             ..._suggestions.map(
                               (s) => ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.location_on_outlined,
-                                    color: Colors.white70),
+                                leading: const Icon(
+                                  Icons.location_on_outlined,
+                                  color: Colors.white70,
+                                ),
                                 title: Text(
                                   s['structured_formatting']['main_text'],
-                                  style:
-                                      const TextStyle(color: Colors.white),
+                                  style: const TextStyle(color: Colors.white),
                                 ),
                                 subtitle: Text(
-                                  s['structured_formatting']
-                                          ['secondary_text'] ??
+                                  s['structured_formatting']['secondary_text'] ??
                                       '',
-                                  style:
-                                      const TextStyle(color: Colors.grey),
+                                  style: const TextStyle(color: Colors.grey),
                                 ),
                                 onTap: () {
                                   pickupController.text = s['description'];
