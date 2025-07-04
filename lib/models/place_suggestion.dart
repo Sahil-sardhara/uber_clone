@@ -1,19 +1,22 @@
 class PlaceSuggestion {
+  final String description;
+  final String placeId;
   final String mainText;
   final String secondaryText;
-  final String description;
 
   PlaceSuggestion({
+    required this.description,
+    required this.placeId,
     required this.mainText,
     required this.secondaryText,
-    required this.description,
   });
 
   factory PlaceSuggestion.fromGoMap(Map<String, dynamic> json) {
     return PlaceSuggestion(
-      mainText: json['structured_formatting']?['main_text'] ?? '',
-      secondaryText: json['structured_formatting']?['secondary_text'] ?? '',
-      description: json['description'] ?? '',
+      description: json['description'],
+      placeId: json['place_id'],
+      mainText: json['structured_formatting']['main_text'],
+      secondaryText: json['structured_formatting']['secondary_text'],
     );
   }
 }
