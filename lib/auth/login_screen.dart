@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+import 'package:uber/auth/forgot_password_screen.dart';
 import 'package:uber/auth/signup_screen.dart';
 import 'package:uber/global/global_var.dart';
 import 'package:uber/methods/common_methods.dart';
@@ -132,19 +133,19 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Container(
         height: double.infinity,
-        margin: EdgeInsets.all(10).copyWith(top: 70),
+        margin: const EdgeInsets.all(10).copyWith(top: 70),
         child: SingleChildScrollView(
           child: Padding(
-            padding: EdgeInsets.all(10),
+            padding: const EdgeInsets.all(10),
             child: Column(
               children: [
                 Image.asset("assets/images/login_photo.png"),
-                Text(
+                const Text(
                   "Login to Your Account",
                   style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
                 ),
                 Padding(
-                  padding: EdgeInsets.all(22),
+                  padding: const EdgeInsets.all(22),
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -152,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextFormField(
                           controller: emailTexteditingController,
                           keyboardType: TextInputType.emailAddress,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: "Email",
                             labelStyle: TextStyle(fontSize: 14),
                             prefixIcon: Icon(Icons.email),
@@ -166,7 +167,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             }
                             return null;
                           },
-                          style: TextStyle(color: Colors.grey, fontSize: 15),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 15,
+                          ),
                         ),
                         const SizedBox(height: 22),
                         TextFormField(
@@ -175,8 +179,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.text,
                           decoration: InputDecoration(
                             labelText: "Password",
-                            labelStyle: TextStyle(fontSize: 14),
-                            prefixIcon: Icon(Icons.lock),
+                            labelStyle: const TextStyle(fontSize: 14),
+                            prefixIcon: const Icon(Icons.lock),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword
@@ -196,19 +200,44 @@ class _LoginScreenState extends State<LoginScreen> {
                             }
                             return null;
                           },
-                          style: TextStyle(color: Colors.grey, fontSize: 15),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (context) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              "Forgot Password?",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 32),
                         ElevatedButton(
                           onPressed: validateAndLogin,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.purple,
-                            padding: EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 80,
                               vertical: 15,
                             ),
                           ),
-                          child: Text("Login"),
+                          child: const Text("Login"),
                         ),
                         const SizedBox(height: 12),
                         TextButton(
@@ -216,15 +245,15 @@ class _LoginScreenState extends State<LoginScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => SingupScreen(),
+                                builder: (context) => const SingupScreen(),
                               ),
                             );
                           },
                           child: RichText(
-                            text: TextSpan(
+                            text: const TextSpan(
                               children: [
                                 TextSpan(
-                                  text: "Don't have an Account?",
+                                  text: "Don't have an Account? ",
                                   style: TextStyle(
                                     fontWeight: FontWeight.w500,
                                     color: Colors.grey,
