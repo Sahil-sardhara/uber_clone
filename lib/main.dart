@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:uber/auth/signup_screen.dart';
 import 'package:uber/pages/home_page.dart';
 import 'package:uber/pages/permission.dart';
 import 'package:uber/pages/slapsh_page.dart';
