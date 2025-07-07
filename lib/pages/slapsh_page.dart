@@ -5,6 +5,7 @@ import 'package:uber/auth/login_screen.dart';
 import 'package:uber/auth/signup_screen.dart';
 import 'package:uber/global/global_var.dart';
 import 'package:uber/pages/home_page.dart';
+import 'package:uber/pages/main_home_wrapper.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -58,7 +59,7 @@ class _SplashScreenState extends State<SplashScreen>
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const HomePage()),
+            MaterialPageRoute(builder: (_) => const MainHomeWrapper()),
           );
         } else {
           await FirebaseAuth.instance.signOut();

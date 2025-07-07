@@ -22,8 +22,10 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Uber Clone',
-      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      home: const LoginScreen(),
+      theme: ThemeData.dark(
+        useMaterial3: true,
+      ).copyWith(scaffoldBackgroundColor: Colors.black),
+      home: const SplashScreen(),
     );
   }
 }

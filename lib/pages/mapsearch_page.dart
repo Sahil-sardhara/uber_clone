@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uber/models/place_suggestion.dart';
 
 class MapSearchScreen extends StatefulWidget {
@@ -20,6 +21,8 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   final destinationController = TextEditingController();
 
   List<PlaceSuggestion> _suggestions = [];
+  List<String> _recentLocations = [];
+
   bool isExpanded = false;
   bool isPickupActive = true;
 
@@ -29,15 +32,6 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   final double maxHeight = 0.6;
 
   final String _apiKey = "AlzaSyAjKvMppyRsPvWPvRlj_KKZRKoYAtp9QnI";
-
-  final List<Map<String, String>> recentLocations = [
-  {"main": "Home", "sub": "Karmabhumi Soc, Gopal Chowk Rd, Parishram Park, Nava Naroda, Ahmedabad, Gujarat 382345"},
-  {"main": "collage", "sub": "Rancharda, Via, Shilaj, Gujarat 382115"},
-  {"main": "Friend's House", "sub": "Prahladnagar, Ahmedabad"},
-  {"main": "Restaurant", "sub": "THE HILLOCK AHMEDABAD, Opp. The CBD, 200 ft, Ring Road, nr. Vaishnodevi Circle, Ahmedabad, Gujarat 382421"},
-  {"main": "Gym", "sub": "1st Floor, Radheshyam Residency, Opp ship 2 Bunglows, Dmart Rd, Nikol, Ahmedabad, Gujarat 382346"},
-];
-
 
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
@@ -54,6 +48,35 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
     super.initState();
     _loadMapStyle();
     _determinePosition();
+    _loadRecentLocations();
+  }
+
+  Future<void> _loadRecentLocations() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _recentLocations = prefs.getStringList('recent_locations') ?? [];
+    });
+  }
+
+  Future<void> _saveRecentLocation(String address) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String> recent = prefs.getStringList('recent_places') ?? [];
+
+    Map<String, String> place = {
+      'title': address.split(',').first,
+      'subtitle': address,
+    };
+    recent.removeWhere(
+      (item) =>
+          Map<String, String>.from(json.decode(item))['title'] ==
+          place['title'],
+    );
+
+    recent.insert(0, json.encode(place));
+
+    if (recent.length > 5) recent = recent.sublist(0, 5);
+
+    await prefs.setStringList('recent_places', recent);
   }
 
   Future<void> _loadMapStyle() async {
@@ -159,7 +182,16 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   Future<void> _checkAndDrawRoute() async {
     if (pickupController.text.isNotEmpty &&
         destinationController.text.isNotEmpty) {
-      await _drawRoute();
+      _pickupLatLng = await _getLatLngFromAddress(pickupController.text);
+      _destinationLatLng = await _getLatLngFromAddress(
+        destinationController.text,
+      );
+
+      if (_pickupLatLng != null && _destinationLatLng != null) {
+        await _drawRoute();
+        await _saveRecentLocation(pickupController.text);
+        await _saveRecentLocation(destinationController.text);
+      }
     }
   }
 
@@ -423,28 +455,35 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Column(
                           children: [
-                            if (!isExpanded)
-                              ...recentLocations.map(
-                                (loc) => ListTile(
+                            if (isExpanded && _suggestions.isEmpty)
+                              ..._recentLocations.map(
+                                (address) => ListTile(
                                   leading: const Icon(
-                                    Icons.add_location,
+                                    Icons.history,
                                     color: Colors.white70,
                                   ),
                                   title: Text(
-                                    loc["main"]!,
+                                    address,
                                     style: const TextStyle(color: Colors.white),
                                   ),
-                                  subtitle: Text(
-                                    loc["sub"]!,
-                                    style: const TextStyle(color: Colors.grey),
-                                  ),
                                   onTap: () {
-                                    pickupController.text = loc["sub"]!;
+                                    if (isPickupActive) {
+                                      pickupController.text = address;
+                                    } else {
+                                      destinationController.text = address;
+                                    }
+
+                                    _collapseBottom();
                                     _checkAndDrawRoute();
-                                    setState(() => isExpanded = true);
+
+                                    Navigator.pop(context, {
+                                      'title': address.split(',').first,
+                                      'subtitle': address,
+                                    });
                                   },
                                 ),
                               ),
+
                             if (isExpanded) ...[
                               ..._suggestions.map(
                                 (s) => ListTile(
@@ -469,6 +508,11 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                                     }
                                     _collapseBottom();
                                     await _checkAndDrawRoute();
+
+                                    Navigator.pop(context, {
+                                      'title': s.mainText,
+                                      'subtitle': s.description,
+                                    });
                                   },
                                 ),
                               ),
@@ -559,6 +603,12 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                   destinationController.text = _selectedAddress;
                   _destinationLatLng = _selectedMarker?.position;
                 }
+
+                Navigator.pop(context, {
+                  'title': _selectedAddress.split(',').first,
+                  'subtitle': _selectedAddress,
+                });
+
                 _showConfirmPickupUI = false;
                 _isSelectingOnMap = false;
               });
@@ -632,6 +682,23 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRecentList() {
+    return Column(
+      children:
+          _recentLocations.map((address) {
+            return ListTile(
+              leading: const Icon(Icons.history, color: Colors.white70),
+              title: Text(address, style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                pickupController.text = address;
+                _checkAndDrawRoute();
+                setState(() => isExpanded = true);
+              },
+            );
+          }).toList(),
     );
   }
 }
