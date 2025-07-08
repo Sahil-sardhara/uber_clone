@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uber/pages/account_page.dart';
+import 'package:uber/pages/activity_page.dart';
 import 'package:uber/pages/home_page.dart';
 import 'package:uber/pages/services_page.dart';
 
@@ -15,8 +17,8 @@ class _MainHomeWrapperState extends State<MainHomeWrapper> {
   final List<Widget> _pages = const [
     HomePage(),
     ServicesPage(),
-    Center(child: Text('Activity', style: TextStyle(color: Colors.white))),
-    Center(child: Text('Account', style: TextStyle(color: Colors.white))),
+    ActivityPage(),
+    AccountPage(),
   ];
 
   @override
@@ -33,9 +35,18 @@ class _MainHomeWrapperState extends State<MainHomeWrapper> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),
-          BottomNavigationBarItem(icon: Icon(Icons.bookmark_border), label: "Activity"),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Account"),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.grid_view),
+            label: "Services",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bookmark_border),
+            label: "Activity",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: "Account",
+          ),
         ],
       ),
     );
