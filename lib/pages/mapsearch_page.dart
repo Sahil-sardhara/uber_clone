@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uber/models/place_suggestion.dart';
+import 'package:uber/pages/mappls_auth_service.dart';
 import 'package:uber/pages/payment_options_screen.dart';
 
 class MapSearchScreen extends StatefulWidget {
@@ -32,8 +33,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   final double normalHeight = 0.4;
   final double maxHeight = 0.6;
   // IMPORTANT: Replace with your actual GoMaps or Google Maps Platform API Key
-  final String _apiKey =
-      "AlzaSyAjKvMppyRsPvWPvRlj_KKZRKoYAtp9QnI"; // Replace with your key
+  final String _apiKey = "b717c61bd5286e25ee5bef9803609908";
+  // Replace with your key
+  String? _accessToken;
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
   LatLng? _pickupLatLng;
@@ -56,6 +58,12 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
     _loadMapStyle();
     _determinePosition();
     _loadRecentLocations();
+    _initializeToken();
+  }
+
+  Future<void> _initializeToken() async {
+    _accessToken = await MapplsAuthService.getAccessToken();
+    setState(() {});
   }
 
   Future<void> _loadRecentLocations() async {
@@ -202,16 +210,29 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   }
 
   Future<String> _getAddressFromLatLng(LatLng latLng) async {
-    final url =
-        'https://maps.gomaps.pro/maps/api/geocode/json?latlng=${latLng.latitude},${latLng.longitude}&key=$_apiKey';
-    final response = await http.get(Uri.parse(url));
+    final url = 'https://atlas.mappls.com/api/places/geo-location';
+
+    final response = await http.post(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_accessToken',
+      },
+      body: json.encode({
+        'latitude': latLng.latitude,
+        'longitude': latLng.longitude,
+      }),
+    );
+
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-        return data['results'][0]['formatted_address'];
+      if (data['suggestedLocations'] != null &&
+          data['suggestedLocations'].isNotEmpty) {
+        return data['suggestedLocations'][0]['placeName'];
       }
     }
-    return "Selected location";
+
+    return "Unknown location";
   }
 
   Future<void> _checkAndDrawRoute() async {
@@ -239,73 +260,56 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   Future<void> _drawRoute() async {
     final pickup = await _getLatLngFromAddress(pickupController.text);
     final dest = await _getLatLngFromAddress(destinationController.text);
+
     if (pickup == null || dest == null) return;
+
+    final token = await MapplsAuthService.getAccessToken();
+
     final url =
-        'https://maps.gomaps.pro/maps/api/directions/json?origin=${pickup.latitude},${pickup.longitude}&destination=${dest.latitude},${dest.longitude}&alternatives=true&key=$_apiKey';
+        'https://apis.mappls.com/advancedmaps/v1/$token/route_adv/driving/${pickup.longitude},${pickup.latitude};${dest.longitude},${dest.latitude}?geometries=polyline';
 
     final response = await http.get(Uri.parse(url));
+
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
-        // --- Extract distance and duration for dynamic pricing ---
-        final leg = data['routes'][0]['legs'][0];
-        final int distanceMeters =
-            leg['distance']['value']; // distance in meters
-        final int durationSeconds =
-            leg['duration']['value']; // duration in seconds
+      if (data['routes'] != null && data['routes'].isNotEmpty) {
+        final route = data['routes'][0];
+        final geometry = route['geometry']; // polyline
 
-        _calculateAndSetRidePrices(
-          distanceMeters / 1000.0,
-          durationSeconds / 60.0,
-        );
-        // --- End extraction ---
-
-        Set<Polyline> polySet = {};
-        for (int i = 0; i < data['routes'].length && i < 3; i++) {
-          final points = data['routes'][i]['overview_polyline']['points'];
-          final polylineCoordinates = _decodePolyline(points);
-          polySet.add(
-            Polyline(
-              polylineId: PolylineId("route_$i"),
-              color:
-                  i == 0
-                      ? Colors.blue
-                      : i == 1
-                      ? Colors.green
-                      : Colors.orange,
-              width: 5,
-              points: polylineCoordinates,
-            ),
-          );
-        }
+        final polylinePoints = _decodePolyline(geometry);
 
         setState(() {
-          _pickupLatLng = pickup;
-          _destinationLatLng = dest;
-          _polylines = polySet;
+          _polylines = {
+            Polyline(
+              polylineId: PolylineId("route"),
+              color: Colors.blue,
+              width: 5,
+              points: polylinePoints,
+            ),
+          };
+
           _markers = {
             Marker(
-              markerId: const MarkerId("pickup"),
+              markerId: MarkerId('pickup'),
               position: pickup,
-              infoWindow: const InfoWindow(title: "Pickup"),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueAzure,
-              ),
+              infoWindow: InfoWindow(title: 'Pickup'),
             ),
             Marker(
-              markerId: const MarkerId("destination"),
+              markerId: MarkerId('destination'),
               position: dest,
-              infoWindow: const InfoWindow(title: "Destination"),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueRed,
-              ),
+              infoWindow: InfoWindow(title: 'Destination'),
             ),
           };
         });
+
         _mapController?.animateCamera(
           CameraUpdate.newLatLngBounds(_boundsFromLatLngs(pickup, dest), 80),
         );
+      } else {
+        print("No route found");
       }
+    } else {
+      print("Failed to fetch route: ${response.body}");
     }
   }
 
@@ -401,7 +405,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
 
   List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> polyline = [];
-    int index = 0, len = encoded.length, lat = 0, lng = 0;
+    int index = 0, len = encoded.length;
+    int lat = 0, lng = 0;
+
     while (index < len) {
       int b, shift = 0, result = 0;
       do {
@@ -409,7 +415,8 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20);
-      lat += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
 
       shift = 0;
       result = 0;
@@ -418,7 +425,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20);
-      lng += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
       polyline.add(LatLng(lat / 1E5, lng / 1E5));
     }
 
