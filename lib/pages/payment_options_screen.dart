@@ -5,7 +5,7 @@ import 'package:uber/pages/add_voucher_screen.dart';
 import 'package:uber/pages/vouchers_screen.dart';
 
 class PaymentOptionsScreen extends StatelessWidget {
-  const PaymentOptionsScreen({super.key});
+  const PaymentOptionsScreen({super.key, required String rideTitle, required double price, required String selectedRideType, required String pickupLocation, required String destinationLocation});
 
   @override
   Widget build(BuildContext context) {

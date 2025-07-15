@@ -7,4 +7,4 @@ CameraPosition GooglePlexIntialPosition = const CameraPosition(
   zoom: 14.0,
 );
 String placeapikey = "AIzaSyA3pSlENnfjLELAjB6zvxWi3Jn2l8YJsv0";
-String apigomap = "AlzaSyAjKvMppyRsPvWPvRlj_KKZRKoYAtp9QnI";
+String apigomap = "AlzaSyQ8QdX0RwC6B2e66rP52F4vYURp1NjAVXM";

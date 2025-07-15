@@ -102,16 +102,15 @@ class _SplashScreenState extends State<SplashScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset(
-                "assets/images/uber_logo.png",
-                height: 100,
-                color: Colors.white,
+              Text(
+                "Movana",
+                style: TextStyle(fontSize: 45, fontWeight: FontWeight.w500),
               ),
 
               const SizedBox(height: 8),
               const Text(
                 "Let's get you moving...",
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+                style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
               const SizedBox(height: 40),
               const CircularProgressIndicator(color: Colors.deepPurple),

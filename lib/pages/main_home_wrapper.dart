@@ -13,16 +13,23 @@ class MainHomeWrapper extends StatefulWidget {
 
 class _MainHomeWrapperState extends State<MainHomeWrapper> {
   int _selectedIndex = 0;
+  String _selectedMode = "Driver"; // Track the selected toggle mode
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    ServicesPage(),
-    ActivityPage(),
-    AccountPage(),
-  ];
+  void _changeMode(String mode) {
+    setState(() {
+      _selectedMode = mode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> _pages = [
+      HomePage(initialMode: _selectedMode, onModeChange: _changeMode),
+      const ServicesPage(),
+      const ActivityPage(),
+      const AccountPage(),
+    ];
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(child: _pages[_selectedIndex]),

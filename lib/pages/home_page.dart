@@ -7,33 +7,22 @@ import 'package:uber/pages/services_page.dart';
 import 'mapsearch_page.dart';
 
 class HomePage extends StatefulWidget {
-  final bool showCloseButton;
+  final String initialMode;
+  final Function(String)? onModeChange;
 
-  const HomePage({super.key, this.showCloseButton = false});
+  const HomePage({super.key, this.initialMode = "Driver", this.onModeChange});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  String selectedMode = "Driver";
+  late String selectedMode;
 
-  Route _createAnimatedRoute(Widget page) {
-    return PageRouteBuilder(
-      pageBuilder: (context, animation, secondaryAnimation) => page,
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 1.0);
-        const end = Offset.zero;
-        const curve = Curves.easeInOut;
-
-        final tween = Tween(
-          begin: begin,
-          end: end,
-        ).chain(CurveTween(curve: curve));
-        return SlideTransition(position: animation.drive(tween), child: child);
-      },
-      transitionDuration: const Duration(milliseconds: 300),
-    );
+  @override
+  void initState() {
+    super.initState();
+    selectedMode = widget.initialMode;
   }
 
   @override
@@ -61,27 +50,16 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: ListView(
           children: [
-            // Title and close button
+            // Title (no close button)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Movana",
-
-                    style: TextStyle(
-                      fontSize: 28,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (widget.showCloseButton)
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                ],
+              child: const Text(
+                "Movana",
+                style: TextStyle(
+                  fontSize: 28,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
 
@@ -95,20 +73,13 @@ class _HomePageState extends State<HomePage> {
                       return Expanded(
                         child: GestureDetector(
                           onTap: () {
-                            if (selectedMode != mode) {
+                            if (!isSelected) {
                               setState(() {
                                 selectedMode = mode;
                               });
-
-                              final nextPage =
-                                  mode == "Driver"
-                                      ? const HomePage(showCloseButton: true)
-                                      : const ParcelHomePage();
-
-                              Navigator.push(
-                                context,
-                                _createAnimatedRoute(nextPage),
-                              );
+                              if (widget.onModeChange != null) {
+                                widget.onModeChange!(mode);
+                              }
                             }
                           },
                           child: AnimatedContainer(
@@ -235,7 +206,6 @@ class _HomePageState extends State<HomePage> {
                   return GestureDetector(
                     onTap: () {
                       final String label = item['label'] ?? '';
-
                       if (label == 'Trip') {
                         Navigator.push(
                           context,

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uber/models/place_suggestion.dart';
+import 'package:uber/pages/ConfirmPickupMapPage.dart';
 import 'package:uber/pages/mappls_auth_service.dart';
 import 'package:uber/pages/payment_options_screen.dart';
 
@@ -32,9 +33,13 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   final double minHeight = 0.25;
   final double normalHeight = 0.4;
   final double maxHeight = 0.6;
+
   // IMPORTANT: Replace with your actual GoMaps or Google Maps Platform API Key
-  final String _apiKey = "b717c61bd5286e25ee5bef9803609908";
-  // Replace with your key
+  // This key is used for Autocomplete and Geocoding requests.
+  final String _apiKey =
+      "AlzaSyQ8QdX0RwC6B2e66rP52F4vYURp1NjAVXM"; // <<< REPLACE THIS
+
+  // Mappls Access Token obtained from MapplsAuthService for Routing and Reverse Geocoding
   String? _accessToken;
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
@@ -50,6 +55,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   // --- New state variables for dynamic pricing ---
   Map<String, double> _calculatedPrices = {};
   Map<String, double?> _calculatedOriginalPrices = {};
+  Map<String, String> _calculatedTravelTimes = {};
   // --- End new state variables ---
 
   @override
@@ -62,14 +68,21 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   }
 
   Future<void> _initializeToken() async {
+    print("Attempting to initialize Mappls access token...");
     _accessToken = await MapplsAuthService.getAccessToken();
-    setState(() {});
+    if (_accessToken != null) {
+      print("Mappls Access Token obtained successfully.");
+    } else {
+      print(
+        "Failed to obtain Mappls Access Token. Check MapplsAuthService.dart implementation and Mappls credentials.",
+      );
+    }
+    setState(() {}); // Rebuild to update UI if token affects anything
   }
 
   Future<void> _loadRecentLocations() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      // Decode the stored JSON strings back into Maps and then extract the subtitle (full address)
       _recentLocations =
           (prefs.getStringList('recent_places') ?? [])
               .map(
@@ -77,6 +90,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                     Map<String, String>.from(json.decode(item))['subtitle']!,
               )
               .toList();
+      print("Loaded recent locations: $_recentLocations");
     });
   }
 
@@ -88,53 +102,61 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
       'title': address.split(',').first.trim(), // Get the first part as title
       'subtitle': address, // Store the full address
     };
-    // Convert existing list items to actual Map objects for easier manipulation
     List<Map<String, String>> recentPlaces =
         recentJsonStrings
             .map((item) => Map<String, String>.from(json.decode(item)))
             .toList();
-    // Remove if already exists to add it to the top
     recentPlaces.removeWhere((item) => item['subtitle'] == place['subtitle']);
-    // Add the new place to the beginning
     recentPlaces.insert(0, place);
-    // Keep only the last 5
     if (recentPlaces.length > 5) {
       recentPlaces = recentPlaces.sublist(0, 5);
     }
 
-    // Convert back to JSON strings for SharedPreferences
     await prefs.setStringList(
       'recent_places',
       recentPlaces.map((e) => json.encode(e)).toList(),
     );
-    // Also update the in-memory list
     setState(() {
       _recentLocations = recentPlaces.map((e) => e['subtitle']!).toList();
     });
+    print("Saved and updated recent locations: $_recentLocations");
   }
 
   Future<void> _loadMapStyle() async {
-    _mapStyle = await rootBundle.loadString('assets/map_style_dark.json');
-    setState(() {});
+    try {
+      _mapStyle = await rootBundle.loadString('assets/map_style_dark.json');
+      setState(() {});
+      print("Map style loaded.");
+    } catch (e) {
+      print("Error loading map style: $e");
+    }
   }
 
   void _getPlaceSuggestions(String input) async {
     if (input.length < 2) {
       setState(() {
         _suggestions.clear();
-        isExpanded = true; // Still expand to show recent if input is short
+        isExpanded = true;
         bottomSheetHeightFraction = normalHeight;
-        _showRideOptionsUI = false; // Hide ride options when searching
+        _showRideOptionsUI = false;
       });
+      print(
+        "Input too short for suggestions. Showing recent locations if available.",
+      );
       return;
     }
 
+    // Ensure the correct base URL for your API key (GoMaps or Google Maps)
+    // If using Google Maps Platform, replace 'https://maps.gomaps.pro' with 'https://maps.googleapis.com'
     final url =
         'https://maps.gomaps.pro/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(input)}&key=$_apiKey&components=country:in';
+    print("Fetching suggestions from: $url");
+
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print("Suggestions API response: $data");
         if (data['status'] == 'OK') {
           List<PlaceSuggestion> suggestions =
               (data['predictions'] as List)
@@ -144,12 +166,23 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
             _suggestions = suggestions;
             isExpanded = true;
             bottomSheetHeightFraction = maxHeight;
-            _showRideOptionsUI = false; // Hide ride options when searching
+            _showRideOptionsUI = false;
           });
+          print("Found ${suggestions.length} suggestions.");
+        } else {
+          print("Suggestions API status not OK: ${data['status']}");
+          if (data['error_message'] != null) {
+            print("Error message: ${data['error_message']}");
+          }
         }
+      } else {
+        print(
+          "Failed to fetch suggestions. Status code: ${response.statusCode}",
+        );
+        print("Response body: ${response.body}");
       }
     } catch (e) {
-      print("Suggestion error: $e");
+      print("Suggestion API error: $e");
     }
   }
 
@@ -158,33 +191,56 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
     setState(() {
       isExpanded = false;
       _suggestions.clear();
-      if (!_showRideOptionsUI) {
+      // Only set to normalHeight if ride options are NOT showing
+      if (!_showRideOptionsUI && !_showConfirmPickupUI) {
         bottomSheetHeightFraction = normalHeight;
       }
+      print("Bottom sheet collapsed.");
     });
   }
 
   Future<void> _shareLocation() async {
+    print("Attempting to share current location.");
     bool granted = await _handlePermission();
-    if (!granted) return;
-    Position pos = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-    _pickupLatLng = LatLng(pos.latitude, pos.longitude);
-    final currentAddress = await _getAddressFromLatLng(_pickupLatLng!);
-    pickupController.text = currentAddress;
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLngZoom(_pickupLatLng!, 16),
-    );
-    await _checkAndDrawRoute();
+    if (!granted) {
+      print("Location permission not granted. Cannot share location.");
+      return;
+    }
+    try {
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      _pickupLatLng = LatLng(pos.latitude, pos.longitude);
+      print(
+        "Current location obtained: ${_pickupLatLng!.latitude}, ${_pickupLatLng!.longitude}",
+      );
+      final currentAddress = await _getAddressFromLatLng(_pickupLatLng!);
+      pickupController.text = currentAddress;
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(_pickupLatLng!, 16),
+      );
+      print("Set pickup to current location: $currentAddress");
+      // After setting current location, if destination is also set, draw route
+      if (destinationController.text.isNotEmpty) {
+        await _checkAndDrawRoute();
+      }
+    } catch (e) {
+      print("Error getting current location: $e");
+    }
   }
 
-  Future<void> _determinePosition() async => await _handlePermission();
+  Future<void> _determinePosition() async {
+    print("Determining position and handling permissions.");
+    await _handlePermission();
+  }
+
   Future<bool> _handlePermission() async {
     LocationPermission permission = await Geolocator.checkPermission();
+    print("Current location permission status: $permission");
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
+      print("Requested location permission. New status: $permission");
     }
     return permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
@@ -192,50 +248,100 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
 
   Future<LatLng?> _getLatLngFromAddress(String address) async {
     if (address == "Current Location" && _pickupLatLng != null) {
+      print("Using existing current location for: $address");
       return _pickupLatLng;
     }
+    if (_apiKey.isEmpty || _apiKey == "YOUR_GOMAPS_OR_Maps_API_KEY") {
+      print(
+        "API Key for Geocoding is not set. Cannot get LatLng from address.",
+      );
+      return null;
+    }
 
+    // Ensure the correct base URL for your API key (GoMaps or Google Maps)
+    // If using Google Maps Platform, replace 'https://maps.gomaps.pro' with 'https://maps.googleapis.com'
     final url =
         'https://maps.gomaps.pro/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$_apiKey';
+    print("Geocoding address from: $url");
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-        final location = data['results'][0]['geometry']['location'];
-        return LatLng(location['lat'], location['lng']);
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print("Geocode API response for '$address': $data");
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          final location = data['results'][0]['geometry']['location'];
+          final latLng = LatLng(location['lat'], location['lng']);
+          print(
+            "Geocoded '$address' to: ${latLng.latitude}, ${latLng.longitude}",
+          );
+          return latLng;
+        } else {
+          print("Geocode API status not OK for '$address': ${data['status']}");
+          if (data['error_message'] != null) {
+            print("Error message from geocode API: ${data['error_message']}");
+          }
+        }
+      } else {
+        print(
+          "Failed to geocode address: '$address'. Status code: ${response.statusCode}",
+        );
+        print("Response body: ${response.body}");
       }
+    } catch (e) {
+      print("Geocoding network/parsing error for '$address': $e");
     }
     return null;
   }
 
   Future<String> _getAddressFromLatLng(LatLng latLng) async {
-    final url = 'https://atlas.mappls.com/api/places/geo-location';
-
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_accessToken',
-      },
-      body: json.encode({
-        'latitude': latLng.latitude,
-        'longitude': latLng.longitude,
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['suggestedLocations'] != null &&
-          data['suggestedLocations'].isNotEmpty) {
-        return data['suggestedLocations'][0]['placeName'];
-      }
+    if (_accessToken == null) {
+      print("Mappls Access Token is null. Cannot reverse geocode.");
+      return "Address Not Found (Token Missing)";
     }
 
-    return "Unknown location";
+    final url = 'https://atlas.mappls.com/api/places/geo-location';
+    print("Reverse geocoding LatLng: ${latLng.latitude}, ${latLng.longitude}");
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_accessToken',
+        },
+        body: json.encode({
+          'latitude': latLng.latitude,
+          'longitude': latLng.longitude,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print("Reverse Geocode API response: $data");
+        if (data['suggestedLocations'] != null &&
+            data['suggestedLocations'].isNotEmpty) {
+          final address = data['suggestedLocations'][0]['placeName'];
+          print("Reverse geocoded to: $address");
+          return address;
+        } else {
+          print("No suggested locations found in reverse geocode response.");
+        }
+      } else {
+        print("Failed to reverse geocode. Status code: ${response.statusCode}");
+        print("Response body: ${response.body}");
+      }
+    } catch (e) {
+      print("Reverse geocoding network/parsing error: $e");
+    }
+
+    return "Address Not Found";
   }
 
   Future<void> _checkAndDrawRoute() async {
+    print(
+      "Initiating _checkAndDrawRoute: Pickup='${pickupController.text}', Destination='${destinationController.text}'",
+    );
     if (pickupController.text.isNotEmpty &&
         destinationController.text.isNotEmpty) {
       _pickupLatLng = await _getLatLngFromAddress(pickupController.text);
@@ -243,6 +349,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
         destinationController.text,
       );
       if (_pickupLatLng != null && _destinationLatLng != null) {
+        print(
+          "Both pickup and destination LatLngs obtained. Proceeding to _drawRoute.",
+        );
         await _drawRoute();
         await _saveRecentLocation(pickupController.text);
         await _saveRecentLocation(destinationController.text);
@@ -252,156 +361,241 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
           isExpanded = false; // Collapse search suggestions
           bottomSheetHeightFraction =
               maxHeight; // Adjust height for ride options
+          print(
+            "UI state updated: _showRideOptionsUI=true, bottomSheetHeightFraction=maxHeight.",
+          );
+        });
+      } else {
+        print("One or both LatLngs are null. Cannot draw route.");
+        if (_pickupLatLng == null) print("  Pickup LatLng is null.");
+        if (_destinationLatLng == null) print("  Destination LatLng is null.");
+        // If not successful, revert UI to initial search state or keep previous state
+        setState(() {
+          _showRideOptionsUI = false;
+          _showConfirmPickupUI = false;
+          bottomSheetHeightFraction = normalHeight; // Revert height
         });
       }
+    } else {
+      print("Pickup or Destination text is empty. Cannot draw route yet.");
+      setState(() {
+        _showRideOptionsUI =
+            false; // Hide ride options if inputs are incomplete
+        _showConfirmPickupUI = false;
+        bottomSheetHeightFraction = normalHeight; // Revert height
+      });
     }
   }
 
   Future<void> _drawRoute() async {
-    final pickup = await _getLatLngFromAddress(pickupController.text);
-    final dest = await _getLatLngFromAddress(destinationController.text);
+    print("Attempting to draw route...");
+    final pickup = _pickupLatLng; // Use already fetched LatLngs
+    final dest = _destinationLatLng; // Use already fetched LatLngs
 
-    if (pickup == null || dest == null) return;
+    if (pickup == null || dest == null) {
+      print(
+        "Pickup or Destination LatLng is null, cannot draw route. Exiting _drawRoute.",
+      );
+      return;
+    }
 
-    final token = await MapplsAuthService.getAccessToken();
+    final token =
+        await MapplsAuthService.getAccessToken(); // Re-fetch for safety, but usually cached
+    if (token == null) {
+      print(
+        "Mappls Access Token is null. Cannot draw route. Exiting _drawRoute.",
+      );
+      return;
+    }
+    print("Using Mappls Token for routing.");
 
     final url =
         'https://apis.mappls.com/advancedmaps/v1/$token/route_adv/driving/${pickup.longitude},${pickup.latitude};${dest.longitude},${dest.latitude}?geometries=polyline';
+    print("Fetching route from: $url");
 
-    final response = await http.get(Uri.parse(url));
+    try {
+      final response = await http.get(Uri.parse(url));
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['routes'] != null && data['routes'].isNotEmpty) {
-        final route = data['routes'][0];
-        final geometry = route['geometry']; // polyline
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print("Route API response received. Checking for routes...");
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
+          final route = data['routes'][0];
+          final geometry = route['geometry']; // polyline
+          final distance =
+              (route['distance'] as num).toDouble(); // distance in meters
+          final duration =
+              (route['duration'] as num).toDouble(); // duration in seconds
 
-        final polylinePoints = _decodePolyline(geometry);
+          final polylinePoints = _decodePolyline(geometry);
+          print("Route polyline decoded with ${polylinePoints.length} points.");
 
-        setState(() {
-          _polylines = {
-            Polyline(
-              polylineId: PolylineId("route"),
-              color: Colors.blue,
-              width: 5,
-              points: polylinePoints,
-            ),
-          };
+          setState(() {
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId("route"),
+                color: Colors.blue,
+                width: 5,
+                points: polylinePoints,
+              ),
+            };
 
-          _markers = {
-            Marker(
-              markerId: MarkerId('pickup'),
-              position: pickup,
-              infoWindow: InfoWindow(title: 'Pickup'),
-            ),
-            Marker(
-              markerId: MarkerId('destination'),
-              position: dest,
-              infoWindow: InfoWindow(title: 'Destination'),
-            ),
-          };
-        });
+            _markers = {
+              Marker(
+                markerId: const MarkerId('pickup'),
+                position: pickup,
+                infoWindow: InfoWindow(title: pickupController.text),
+              ),
+              Marker(
+                markerId: const MarkerId('destination'),
+                position: dest,
+                infoWindow: InfoWindow(title: destinationController.text),
+              ),
+            };
+            print("Markers and Polylines updated on map.");
+          });
 
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngBounds(_boundsFromLatLngs(pickup, dest), 80),
-        );
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngBounds(_boundsFromLatLngs(pickup, dest), 80),
+          );
+
+          _calculateAndSetRidePrices(
+            distance / 1000,
+            duration / 60,
+          ); // Convert to km and minutes
+          print(
+            "Calculated ride prices for distance: ${distance / 1000}km, duration: ${duration / 60}min.",
+          );
+        } else {
+          print("No route found in response data. Clearing map elements.");
+          setState(() {
+            _polylines.clear();
+            _markers.clear();
+          });
+        }
       } else {
-        print("No route found");
+        print(
+          "Failed to fetch route. Status code: ${response.statusCode}. Response body: ${response.body}",
+        );
+        setState(() {
+          _polylines.clear();
+          _markers.clear();
+        });
       }
-    } else {
-      print("Failed to fetch route: ${response.body}");
+    } catch (e) {
+      print("Route drawing network/parsing error: $e");
+      setState(() {
+        _polylines.clear();
+        _markers.clear();
+      });
     }
   }
 
-  // --- New function for dynamic pricing calculation ---
   void _calculateAndSetRidePrices(double distanceKm, double durationMinutes) {
-    // Define your base rates, per KM, per Minute for each ride type
-    // These are example values and can be adjusted as needed.
     const Map<String, double> baseFares = {
       'Auto': 50.0,
       'Courier': 30.0,
       'Uber Go': 60.0,
       'Moto': 20.0,
-      'XL Rentals': 400.0, // Rentals might have a package-based price
+      'XL Rentals': 400.0,
     };
     const Map<String, double> pricePerKm = {
       'Auto': 12.0,
       'Courier': 10.0,
       'Uber Go': 15.0,
       'Moto': 8.0,
-      'XL Rentals': 0.0, // For rentals, KM might be part of the package
+      'XL Rentals':
+          0.0, // XL Rentals might have a different pricing structure, adjusting here
     };
     const Map<String, double> pricePerMinute = {
       'Auto': 2.0,
       'Courier': 1.5,
       'Uber Go': 2.5,
       'Moto': 1.0,
-      'XL Rentals': 0.0, // For rentals, minutes might be part of the package
+      'XL Rentals':
+          0.0, // XL Rentals might have a different pricing structure, adjusting here
+    };
+    // NEW: Time in minutes per kilometer
+    const Map<String, double> timePerKm = {
+      'Auto': 2.5, // 2.5 minutes per km (approx 24 km/hr avg speed)
+      'Courier': 2.0, // 2 minutes per km (approx 30 km/hr avg speed)
+      'Uber Go': 2.0, // 2 minutes per km (approx 30 km/hr avg speed)
+      'Moto': 1.5, // 1.5 minutes per km (approx 40 km/hr avg speed)
+      'XL Rentals': 2.0, // 2 minutes per km
     };
 
-    // Simulate a simple surge/discount based on time of day (example)
-    // You can make this more sophisticated.
     final int currentHour = DateTime.now().hour;
     double surgeMultiplier = 1.0;
     double discountFactor = 1.0;
 
     if (currentHour >= 7 && currentHour <= 9 ||
         currentHour >= 17 && currentHour <= 19) {
-      // Peak hours (7-9 AM, 5-7 PM)
-      surgeMultiplier = 1.2 + (0.3 * (currentHour % 2)); // e.g., 1.2x to 1.5x
+      surgeMultiplier = 1.2 + (0.3 * (currentHour % 2));
     } else if (currentHour >= 22 || currentHour <= 5) {
-      // Late night/Early morning
-      surgeMultiplier = 1.1 + (0.2 * (currentHour % 2)); // e.g., 1.1x to 1.3x
+      surgeMultiplier = 1.1 + (0.2 * (currentHour % 2));
     } else if (currentHour >= 10 && currentHour <= 16) {
-      // Off-peak midday
-      discountFactor = 0.9; // 10% discount
+      discountFactor = 0.9;
     }
 
     setState(() {
       _calculatedPrices.clear();
       _calculatedOriginalPrices.clear();
+      _calculatedTravelTimes.clear(); // Clear previous travel times
 
       baseFares.keys.forEach((rideType) {
         double base = baseFares[rideType]!;
         double perKm = pricePerKm[rideType]!;
         double perMin = pricePerMinute[rideType]!;
+        double tPerKm =
+            timePerKm[rideType]!; // Get time per km for this ride type
+
+        // Calculate duration based on distanceKm and timePerKm
+        final double calculatedDurationMinutes = distanceKm * tPerKm;
 
         double calculatedRawPrice;
         if (rideType == 'XL Rentals') {
-          // For rentals, assume a fixed price for the package (e.g., 1hr/15km)
-          // and add only if distance/time exceed it substantially.
-          // For this example, let's keep it simple: just the base fare + a minimal factor for distance/time.
+          // XL Rentals often have a base rate for some distance/time, then additional charges
+          // For a simple example, let's make it a higher base plus a small per km/min
           calculatedRawPrice =
-              base + (distanceKm * 0.5) + (durationMinutes * 0.5);
+              base + (distanceKm * 0.5) + (calculatedDurationMinutes * 0.5);
         } else {
           calculatedRawPrice =
-              base + (perKm * distanceKm) + (perMin * durationMinutes);
+              base +
+              (perKm * distanceKm) +
+              (perMin * calculatedDurationMinutes);
         }
 
-        // Apply surge first
         double finalPrice = calculatedRawPrice * surgeMultiplier;
         double? originalPrice;
 
-        // Apply discount if applicable and if not already surged
         if (discountFactor < 1.0 && surgeMultiplier == 1.0) {
           originalPrice = finalPrice;
           finalPrice = finalPrice * discountFactor;
+        } else if (surgeMultiplier > 1.0) {
+          originalPrice = calculatedRawPrice;
         }
 
         _calculatedPrices[rideType] = finalPrice;
-        if (originalPrice != null) {
-          _calculatedOriginalPrices[rideType] = originalPrice;
-        } else if (surgeMultiplier > 1.0) {
-          // If surged, the original price before surge could be the base for strikethrough
-          _calculatedOriginalPrices[rideType] = calculatedRawPrice;
+        _calculatedOriginalPrices[rideType] = originalPrice;
+
+        // Convert calculatedDurationMinutes to a human-readable format (e.g., "30 min", "1 hr 15 min")
+        final int totalMinutes = calculatedDurationMinutes.round();
+        final int hours = totalMinutes ~/ 60;
+        final int remainingMinutes = totalMinutes % 60;
+        String timeString;
+        if (hours > 0) {
+          timeString = '${hours} hr ${remainingMinutes} min';
         } else {
-          _calculatedOriginalPrices[rideType] =
-              null; // No strikethrough if no discount or surge
+          timeString = '${remainingMinutes} min';
         }
+        _calculatedTravelTimes[rideType] = timeString; // Store formatted time
+
+        print(
+          "Price for $rideType: Final=${finalPrice.toStringAsFixed(2)}, Original=${originalPrice?.toStringAsFixed(2) ?? 'N/A'}, Est. Time: $timeString",
+        );
       });
     });
   }
-  // --- End new function ---
 
   List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> polyline = [];
@@ -430,7 +624,6 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
 
       polyline.add(LatLng(lat / 1E5, lng / 1E5));
     }
-
     return polyline;
   }
 
@@ -463,10 +656,12 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
               if (_mapStyle.isNotEmpty) {
                 _mapController?.setMapStyle(_mapStyle);
               }
+              print("Google Map created and style applied.");
             },
             markers: _markers,
             polylines: _polylines,
             onTap: (latLng) async {
+              print("Map tapped at: ${latLng.latitude}, ${latLng.longitude}");
               if (_isSelectingOnMap) {
                 final address = await _getAddressFromLatLng(latLng);
                 final marker = Marker(
@@ -474,6 +669,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                   position: latLng,
                   draggable: true,
                   onDragEnd: (newPosition) async {
+                    print(
+                      "Selected marker dragged to: ${newPosition.latitude}, ${newPosition.longitude}",
+                    );
                     final newAddress = await _getAddressFromLatLng(newPosition);
                     setState(() {
                       _selectedAddress = newAddress;
@@ -482,6 +680,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                       );
                       _markers = {_selectedMarker!};
                     });
+                    print(
+                      "Updated selected address on drag: $_selectedAddress",
+                    );
                   },
                 );
                 setState(() {
@@ -493,6 +694,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                       normalHeight; // Adjust height for confirm pickup UI
                   _showRideOptionsUI =
                       false; // Hide ride options if selecting on map
+                  print("Showing confirm pickup UI for: $_selectedAddress");
                 });
               } else {
                 _collapseBottom();
@@ -639,7 +841,10 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                                                 address;
                                           }
                                           _collapseBottom();
-                                          _checkAndDrawRoute();
+                                          print(
+                                            "Selected recent location: $address",
+                                          );
+                                          _checkAndDrawRoute(); // Re-evaluate and draw route
                                         },
                                       ),
                                     ),
@@ -664,6 +869,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                                           ),
                                         ),
                                         onTap: () async {
+                                          print(
+                                            "Selected suggestion: ${s.description}",
+                                          );
                                           if (isPickupActive) {
                                             pickupController.text =
                                                 s.description;
@@ -672,7 +880,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                                                 s.description;
                                           }
                                           _collapseBottom();
-                                          await _checkAndDrawRoute();
+                                          await _checkAndDrawRoute(); // Re-evaluate and draw route
                                         },
                                       ),
                                     ),
@@ -686,15 +894,16 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                                         style: TextStyle(color: Colors.white),
                                       ),
                                       onTap: () {
+                                        print("Tapped 'Set location on map'.");
                                         _collapseBottom();
                                         setState(() {
                                           _isSelectingOnMap = true;
-                                          _showRideOptionsUI =
-                                              false; // Hide ride options
-                                          _showConfirmPickupUI =
-                                              false; // Hide confirm pickup
-                                          _markers
-                                              .clear(); // Clear existing markers for map selection
+                                          _showRideOptionsUI = false;
+                                          _showConfirmPickupUI = false;
+                                          _markers.clear();
+                                          _polylines.clear();
+                                          bottomSheetHeightFraction =
+                                              maxHeight; // Make space for map selection UI
                                         });
                                       },
                                     ),
@@ -744,17 +953,20 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                     child: Text(
                       _selectedAddress,
                       style: const TextStyle(color: Colors.white),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: 8), // Added spacing
                   ElevatedButton(
                     onPressed: () {
+                      print("Tapped 'Search' from confirm pickup.");
                       setState(() {
                         _showConfirmPickupUI = false;
                         _isSelectingOnMap = false;
-                        // Return to search UI state
-                        _markers.clear(); // Clear the single selected marker
-                        _polylines.clear(); // Clear polylines
-                        bottomSheetHeightFraction = normalHeight;
+                        _markers.clear();
+                        _polylines.clear();
+                        bottomSheetHeightFraction =
+                            normalHeight; // Revert to search height
                       });
                     },
                     style: ElevatedButton.styleFrom(
@@ -778,20 +990,27 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
               foregroundColor: Colors.black,
             ),
             onPressed: () async {
+              print("Tapped 'Confirm pick-up'.");
               setState(() {
                 if (isPickupActive) {
                   pickupController.text = _selectedAddress;
                   _pickupLatLng = _selectedMarker?.position;
+                  print("Confirmed pickup from map: ${pickupController.text}");
                 } else {
                   destinationController.text = _selectedAddress;
                   _destinationLatLng = _selectedMarker?.position;
+                  print(
+                    "Confirmed destination from map: ${destinationController.text}",
+                  );
                 }
 
                 _showConfirmPickupUI = false;
                 _isSelectingOnMap = false;
               });
 
+              // After confirming a point from map, check if both are ready to draw route
               if (_pickupLatLng != null && _destinationLatLng != null) {
+                print("Both LatLngs confirmed. Drawing route...");
                 await _drawRoute();
                 await _saveRecentLocation(
                   isPickupActive
@@ -799,15 +1018,19 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                       : destinationController.text,
                 );
                 setState(() {
-                  _showRideOptionsUI =
-                      true; // Show ride options after confirming selection from map
+                  _showRideOptionsUI = true; // Show ride options
                   bottomSheetHeightFraction = maxHeight;
                 });
               } else {
-                // If only one point is selected, just update the text field and go back to initial state
+                // If only one point is selected from map, just update the text field
+                // and return to the main search state for the user to select the other point.
+                print(
+                  "Only one point set via map. Returning to search fields.",
+                );
                 setState(() {
-                  bottomSheetHeightFraction = normalHeight;
-                  _markers.clear();
+                  bottomSheetHeightFraction =
+                      normalHeight; // Go back to search height
+                  _markers.clear(); // Clear the single marker for a fresh start
                   _polylines.clear();
                 });
               }
@@ -829,17 +1052,17 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
             controller: pickupController,
             onTap:
                 () => setState(() {
+                  print("Pickup field tapped. Setting active.");
                   isExpanded = true;
                   isPickupActive = true;
                   bottomSheetHeightFraction = normalHeight;
-                  _showRideOptionsUI =
-                      false; // Hide ride options when editing pickup
-                  _showConfirmPickupUI =
-                      false; // Hide confirm pickup when editing
-                  _markers.clear(); // Clear markers when editing
-                  _polylines.clear(); // Clear polylines
+                  _showRideOptionsUI = false;
+                  _showConfirmPickupUI = false;
+                  _markers.clear();
+                  _polylines.clear();
                 }),
             onChanged: (text) {
+              print("Pickup text changed: $text");
               _getPlaceSuggestions(text);
             },
             style: const TextStyle(color: Colors.white),
@@ -864,17 +1087,17 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
             controller: destinationController,
             onTap:
                 () => setState(() {
+                  print("Destination field tapped. Setting active.");
                   isExpanded = true;
-                  isPickupActive = false;
+                  isPickupActive = false; // Set to false for destination
                   bottomSheetHeightFraction = normalHeight;
-                  _showRideOptionsUI =
-                      false; // Hide ride options when editing destination
-                  _showConfirmPickupUI =
-                      false; // Hide confirm pickup when editing
-                  _markers.clear(); // Clear markers when editing
-                  _polylines.clear(); // Clear polylines
+                  _showRideOptionsUI = false;
+                  _showConfirmPickupUI = false;
+                  _markers.clear();
+                  _polylines.clear();
                 }),
             onChanged: (text) {
+              print("Destination text changed: $text");
               _getPlaceSuggestions(text);
             },
             style: const TextStyle(color: Colors.white),
@@ -890,6 +1113,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   }
 
   Widget _rideOptionsUI() {
+    print("Building ride options UI.");
     return Column(
       children: [
         Container(
@@ -901,315 +1125,243 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
             borderRadius: BorderRadius.circular(10),
           ),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Choose a trip",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildRideOption(
-                  image: 'assets/images/auto.webp',
-                  title: 'Auto',
-                  capacity: 3,
-                  time:
-                      'Calculated Time', // Will not dynamically show, but price will
-                  price:
-                      '₹${_calculatedPrices['Auto']?.toStringAsFixed(2) ?? '0.00'}',
-                  originalPrice:
-                      _calculatedOriginalPrices['Auto'] != null
-                          ? '₹${_calculatedOriginalPrices['Auto']!.toStringAsFixed(2)}'
-                          : null,
-                  description: 'Pay directly to driver, cash/UPI only',
-                  isFaster: true,
-                  isRental: false,
-                ),
-                const SizedBox(height: 12),
-                _buildRideOption(
-                  image: 'assets/images/courier.png',
-                  title: 'Courier',
-                  capacity: 0,
-                  time: 'Calculated Time',
-                  price:
-                      '₹${_calculatedPrices['Courier']?.toStringAsFixed(2) ?? '0.00'}',
-                  originalPrice:
-                      _calculatedOriginalPrices['Courier'] != null
-                          ? '₹${_calculatedOriginalPrices['Courier']!.toStringAsFixed(2)}'
-                          : null,
-                  description: 'Send packages to loved ones',
-                  isFaster: false,
-                  isRental: false,
-                ),
-                const SizedBox(height: 12),
-                _buildRideOption(
-                  image: 'assets/images/suv.webp',
-                  title: 'Uber Go',
-                  capacity: 4,
-                  time: 'Calculated Time',
-                  price:
-                      '₹${_calculatedPrices['Uber Go']?.toStringAsFixed(2) ?? '0.00'}',
-                  originalPrice:
-                      _calculatedOriginalPrices['Uber Go'] != null
-                          ? '₹${_calculatedOriginalPrices['Uber Go']!.toStringAsFixed(2)}'
-                          : null,
-                  description: 'Affordable compact rides',
-                  isFaster: false,
-                  isRental: false,
-                ),
-                const SizedBox(height: 12),
-                _buildRideOption(
-                  image: 'assets/images/moto.png',
-                  title: 'Moto',
-                  capacity: 1,
-                  time: 'Calculated Time',
-                  price:
-                      '₹${_calculatedPrices['Moto']?.toStringAsFixed(2) ?? '0.00'}',
-                  originalPrice:
-                      _calculatedOriginalPrices['Moto'] != null
-                          ? '₹${_calculatedOriginalPrices['Moto']!.toStringAsFixed(2)}'
-                          : null,
-                  description: 'Affordable, motorcycle rides',
-                  isFaster: false,
-                  isRental: false,
-                ),
-                const SizedBox(height: 12),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Economy",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildRideOption(
-                  image: 'assets/images/rental.png',
-                  title: 'XL Rentals',
-                  capacity: 0,
-                  time: 'Calculated Time',
-                  price:
-                      '₹${_calculatedPrices['XL Rentals']?.toStringAsFixed(2) ?? '0.00'}',
-                  originalPrice:
-                      _calculatedOriginalPrices['XL Rentals'] != null
-                          ? '₹${_calculatedOriginalPrices['XL Rentals']!.toStringAsFixed(2)}'
-                          : null,
-                  description: '1 hr/15 km',
-                  isFaster: false,
-                  isRental: true,
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Row(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    // Handle payment method change
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const PaymentOptionsScreen(),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade900,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
+              const Text(
+                "Choose your ride",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade900,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        Icon(Icons.money, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text(
-                          "Cash",
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
-                        Spacer(),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: Colors.white70,
-                          size: 16,
+                        const Icon(Icons.location_on, color: Colors.white70),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            pickupController.text,
+                            style: const TextStyle(color: Colors.white),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                    const Divider(color: Colors.grey),
+                    Row(
+                      children: [
+                        const Icon(Icons.arrow_downward, color: Colors.white70),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            destinationController.text,
+                            style: const TextStyle(color: Colors.white),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  onPressed: () {
-                    print("Choose $selectedRideTitle button pressed!");
-                  },
-                  child: Text(
-                    "Choose $selectedRideTitle",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _buildRideOption('Auto', 'assets/images/auto.webp', ''),
+              _buildRideOption('Courier', 'assets/images/courier.png', ''),
+              _buildRideOption('Uber Go', 'assets/images/suv.webp', ''),
+              _buildRideOption('Moto', 'assets/images/moto.png', ''),
+              _buildRideOption('XL Rentals', 'assets/images/rental.png', ''),
+            ],
+          ),
+        ),
+
+        // Cash Row
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => PaymentOptionsScreen(
+                          rideTitle: selectedRideTitle,
+                          price: _calculatedPrices[selectedRideTitle] ?? 0.0,
+                          selectedRideType: selectedRideTitle,
+                          pickupLocation: pickupController.text,
+                          destinationLocation: destinationController.text,
+                        ),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.attach_money, color: Colors.green),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Cash',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    const Spacer(),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Choose Ride Button
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () {
+              print("Proceeding with $selectedRideTitle ride.");
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => PaymentOptionsScreen(
+                        rideTitle: selectedRideTitle,
+                        price: _calculatedPrices[selectedRideTitle] ?? 0.0,
+                        selectedRideType: selectedRideTitle,
+                        pickupLocation: pickupController.text,
+                        destinationLocation: destinationController.text,
+                      ),
+                ),
+              );
+            },
+            child: Text("Choose $selectedRideTitle"),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRideOption({
-    required String image,
-    required String title,
-    required int capacity,
-    required String time,
-    required String price,
-    String? originalPrice,
-    required String description,
-    bool isFaster = false,
-    bool isRental = false,
-  }) {
-    final bool isSelected = selectedRideTitle == title;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          selectedRideTitle = title;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.grey.shade800 : Colors.grey.shade900,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? Colors.greenAccent : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: Row(
-          children: [
-            Image.asset(image, width: 50, height: 50),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    // Added Row for title and capacity/faster
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (capacity > 0 && !isRental)
-                        // Only show capacity if not rental and > 0
-                        Row(
-                          children: [
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.person,
-                              color: Colors.white70,
-                              size: 16,
-                            ),
-                            Text(
-                              '$capacity',
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                          ],
-                        ),
-                      if (isFaster)
-                        // Show Faster tag if true
-                        Row(
-                          children: [
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "Faster",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                  Text(
-                    description,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(time, style: const TextStyle(color: Colors.white70)),
-                Row(
+  Widget _buildRideOption(String title, String imagePath, String description) {
+    double? originalPrice = _calculatedOriginalPrices[title];
+    double? currentPrice = _calculatedPrices[title];
+    String? travelTime = _calculatedTravelTimes[title]; // Example: "6 min"
+
+    if (currentPrice == null || travelTime == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Calculate ETA
+    final now = DateTime.now();
+    final eta = now.add(
+      Duration(
+        minutes:
+            int.tryParse(
+              RegExp(r'\d+').firstMatch(travelTime)?.group(0) ?? '0',
+            ) ??
+            0,
+      ),
+    );
+    final etaFormatted = TimeOfDay.fromDateTime(
+      eta,
+    ).format(context); // e.g., 2:32 PM
+
+    return Card(
+      color:
+          selectedRideTitle == title
+              ? Colors.blue.shade900
+              : Colors.grey.shade900,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            selectedRideTitle = title;
+          });
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            children: [
+              Image.asset(imagePath, width: 50, height: 50),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (originalPrice != null)
-                      Text(
-                        originalPrice,
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                          decoration: TextDecoration.lineThrough,
-                        ),
-                      ),
-                    const SizedBox(width: 4),
                     Text(
-                      price,
+                      title,
                       style: const TextStyle(
                         color: Colors.white,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$etaFormatted · $travelTime',
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (originalPrice != null && originalPrice > currentPrice)
+                    Text(
+                      '₹${originalPrice.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  Text(
+                    '₹${currentPrice.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
