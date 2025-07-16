@@ -127,7 +127,9 @@ class _HomePageState extends State<HomePage> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const MapSearchScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const MapSearchScreen(mode: 'Driver'),
+                  ),
                 );
               },
               child: Container(
@@ -210,7 +212,7 @@ class _HomePageState extends State<HomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const MapSearchScreen(),
+                            builder: (_) => const MapSearchScreen(mode: ''),
                           ),
                         );
                       } else if (label == 'Rentals') {

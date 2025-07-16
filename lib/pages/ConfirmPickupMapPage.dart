@@ -14,7 +14,7 @@ class ConfirmPickupMapPage extends StatefulWidget {
     required this.destinationLatLng,
     required this.selectedRideType,
     required this.estimatedPrice,
-    required this.estimatedTime,
+    required this.estimatedTime, required Null Function() onCancel, required Null Function() onConfirm, required String selectedAddress,
   });
 
   @override

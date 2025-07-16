@@ -12,7 +12,10 @@ import 'package:uber/pages/mappls_auth_service.dart';
 import 'package:uber/pages/payment_options_screen.dart';
 
 class MapSearchScreen extends StatefulWidget {
-  const MapSearchScreen({super.key});
+  final String mode; // "Driver" or "Parcel"
+
+  const MapSearchScreen({super.key, required this.mode});
+
   @override
   State<MapSearchScreen> createState() => _MapSearchScreenState();
 }
@@ -1184,13 +1187,30 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
         Expanded(
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            children: [
-              _buildRideOption('Auto', 'assets/images/auto.webp', ''),
-              _buildRideOption('Courier', 'assets/images/courier.png', ''),
-              _buildRideOption('Uber Go', 'assets/images/suv.webp', ''),
-              _buildRideOption('Moto', 'assets/images/moto.png', ''),
-              _buildRideOption('XL Rentals', 'assets/images/rental.png', ''),
-            ],
+            children:
+                widget.mode == 'Parcel'
+                    ? [
+                      _buildRideOption(
+                        'Courier',
+                        'assets/images/courier.png',
+                        '',
+                      ),
+                    ]
+                    : [
+                      _buildRideOption('Auto', 'assets/images/auto.webp', ''),
+                      _buildRideOption('Uber Go', 'assets/images/suv.webp', ''),
+                      _buildRideOption('Moto', 'assets/images/moto.png', ''),
+                      _buildRideOption(
+                        'Courier',
+                        'assets/images/courier.png',
+                        '',
+                      ),
+                      _buildRideOption(
+                        'XL Rentals',
+                        'assets/images/rental.png',
+                        '',
+                      ),
+                    ],
           ),
         ),
 
@@ -1220,17 +1240,21 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.attach_money, color: Colors.green),
+                    const Icon(
+                      Icons.attach_money_rounded,
+                      color: Colors.green,
+                      size: 25,
+                    ),
                     const SizedBox(width: 8),
                     const Text(
                       'Cash',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      style: TextStyle(color: Colors.white, fontSize: 18),
                     ),
                     const Spacer(),
                     const Icon(
                       Icons.arrow_forward_ios,
                       color: Colors.white,
-                      size: 16,
+                      size: 18,
                     ),
                   ],
                 ),
@@ -1238,8 +1262,6 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
             ),
           ),
         ),
-
-        const SizedBox(height: 12),
 
         // Choose Ride Button
         Padding(
@@ -1266,7 +1288,11 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                 ),
               );
             },
-            child: Text("Choose $selectedRideTitle"),
+            child: Text(
+              widget.mode == 'Parcel'
+                  ? "Confirm Courier"
+                  : "Choose $selectedRideTitle",
+            ),
           ),
         ),
       ],

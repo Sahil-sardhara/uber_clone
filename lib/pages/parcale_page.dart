@@ -4,6 +4,7 @@ import 'package:uber/pages/intercity_page.dart';
 import 'package:uber/pages/rentals_page.dart';
 import 'package:uber/pages/reserve_page.dart';
 import 'package:uber/pages/services_page.dart';
+import 'courier_ride_bottom_sheet.dart';
 import 'mapsearch_page.dart';
 
 class ParcelHomePage extends StatefulWidget {
@@ -106,12 +107,15 @@ class _ParcelHomePageState extends State<ParcelHomePage> {
 
             // Search Bar
             GestureDetector(
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const MapSearchScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const MapSearchScreen(mode: 'Parcel'),
+                  ),
                 );
               },
+
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 padding: const EdgeInsets.symmetric(
@@ -177,7 +181,7 @@ class _ParcelHomePageState extends State<ParcelHomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const MapSearchScreen(),
+                            builder: (_) => const MapSearchScreen(mode: ''),
                           ),
                         );
                       } else if (label == 'Rentals') {

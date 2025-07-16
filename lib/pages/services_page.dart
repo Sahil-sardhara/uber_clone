@@ -16,7 +16,7 @@ class ServicesPage extends StatelessWidget {
         'label': 'Trip',
         'icon': Icons.directions_car,
         'promo': true,
-        'page': const MapSearchScreen(),
+        'page': const MapSearchScreen(mode: '',),
       },
       {
         'label': 'Rentals',
